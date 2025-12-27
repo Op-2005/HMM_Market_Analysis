@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
+from .feature_engineering import add_technical_indicators
 
 class FinancialDataLoader(Dataset):
     def __init__(self, file_path, target_column, features, normalize=True, data=None, device=None):
@@ -111,9 +112,266 @@ class FinancialDataLoader(Dataset):
         print(f"Bear market days: {(self.data[label_col] == 0).sum()} ({(1-self.data[label_col].mean())*100:.1f}%)")
         
         return label_col
+    
+    def add_technical_indicators(self, price_col, high_col=None, low_col=None, volume_col=None,
+                                rsi_window=14, macd_fast=12, macd_slow=26, macd_signal=9,
+                                bb_window=20, bb_std=2.0, atr_window=14, volume_window=20):
+        """
+        Add technical indicators to the dataset.
+        
+        Parameters:
+        -----------
+        price_col : str
+            Column name for price/close
+        high_col : str, optional
+            Column name for high prices (required for ATR)
+        low_col : str, optional
+            Column name for low prices (required for ATR)
+        volume_col : str, optional
+            Column name for volume (required for volume ratio)
+        rsi_window, macd_fast, macd_slow, macd_signal, bb_window, bb_std, 
+        atr_window, volume_window : int/float
+            Parameters for technical indicators
+        
+        Returns:
+        --------
+        list
+            List of added indicator column names
+        """
+        added_cols = []
+        original_cols = set(self.data.columns)
+        
+        self.data = add_technical_indicators(
+            self.data,
+            price_col=price_col,
+            high_col=high_col,
+            low_col=low_col,
+            volume_col=volume_col,
+            rsi_window=rsi_window,
+            macd_fast=macd_fast,
+            macd_slow=macd_slow,
+            macd_signal=macd_signal,
+            bb_window=bb_window,
+            bb_std=bb_std,
+            atr_window=atr_window,
+            volume_window=volume_window
+        )
+        
+        added_cols = [col for col in self.data.columns if col not in original_cols]
+        print(f"Added {len(added_cols)} technical indicator columns: {', '.join(added_cols)}")
+        
+        return added_cols
+
+
+class Discretizer:
+    """
+    Fits discretization on training data and applies to test data to prevent data leakage.
+    
+    Supports both univariate and multivariate data discretization.
+    """
+    def __init__(self, num_bins=10, strategy='equal_width', random_state=0, 
+                 multivariate_method='independent', clip_outliers=True, outlier_percentile=99):
+        """
+        Initialize Discretizer.
+        
+        Parameters:
+        -----------
+        num_bins : int
+            Number of bins for discretization
+        strategy : str
+            Discretization strategy: 'equal_width', 'equal_freq', 'kmeans'
+        random_state : int
+            Random seed for reproducibility
+        multivariate_method : str
+            Method for multivariate data: 'independent', 'pca_kmeans'
+        clip_outliers : bool
+            Whether to clip outliers before discretization
+        outlier_percentile : float
+            Percentile threshold for outlier clipping (e.g., 99 for 1st and 99th percentile)
+        """
+        self.num_bins = num_bins
+        self.strategy = strategy
+        self.random_state = random_state
+        self.multivariate_method = multivariate_method
+        self.clip_outliers = clip_outliers
+        self.outlier_percentile = outlier_percentile
+        self.bins_ = None
+        self.kmeans_model_ = None
+        self.pca_model_ = None
+        self.fitted_ = False
+        self.is_multivariate_ = False
+    
+    def fit(self, data):
+        """
+        Fit discretization parameters on training data.
+        
+        Parameters:
+        -----------
+        data : array-like, 1D or 2D
+            Training data to fit discretization on
+            - 1D: Single feature (shape: [n_samples])
+            - 2D: Multiple features (shape: [n_samples, n_features])
+        """
+        data = np.array(data)
+        
+        # Handle multivariate case
+        if len(data.shape) == 2 and data.shape[1] > 1:
+            self.is_multivariate_ = True
+            if self.multivariate_method == 'pca_kmeans':
+                return self._fit_multivariate_pca_kmeans(data)
+            else:  # independent
+                return self._fit_multivariate_independent(data)
+        
+        # Univariate case
+        self.is_multivariate_ = False
+        if len(data.shape) > 1:
+            data = data.flatten()
+        
+        # Clip outliers if requested
+        if self.clip_outliers:
+            lower = np.percentile(data, 100 - self.outlier_percentile)
+            upper = np.percentile(data, self.outlier_percentile)
+            data = np.clip(data, lower, upper)
+            self.clip_bounds_ = (lower, upper)
+        else:
+            self.clip_bounds_ = None
+        
+        if self.strategy == 'equal_width':
+            self.bins_ = np.linspace(np.min(data), np.max(data), self.num_bins + 1)
+        elif self.strategy == 'equal_freq':
+            self.bins_ = np.percentile(data, np.linspace(0, 100, self.num_bins + 1))
+        elif self.strategy == 'kmeans':
+            from sklearn.cluster import KMeans
+            self.kmeans_model_ = KMeans(n_clusters=self.num_bins, random_state=self.random_state)
+            self.kmeans_model_.fit(data.reshape(-1, 1))
+            centers = np.sort(self.kmeans_model_.cluster_centers_.flatten())
+            self.bins_ = np.concatenate([[-np.inf], (centers[:-1] + centers[1:]) / 2, [np.inf]])
+        else:
+            raise ValueError(f"Unknown discretization strategy: {self.strategy}")
+        
+        self.bins_ = np.unique(self.bins_)
+        self.fitted_ = True
+        return self
+    
+    def _fit_multivariate_independent(self, data):
+        """Fit independent discretizers for each feature."""
+        n_features = data.shape[1]
+        self.discretizers_ = []
+        
+        for i in range(n_features):
+            disc = Discretizer(
+                num_bins=self.num_bins,
+                strategy=self.strategy,
+                random_state=self.random_state + i,
+                clip_outliers=self.clip_outliers,
+                outlier_percentile=self.outlier_percentile,
+                multivariate_method='independent'  # Prevent recursion
+            )
+            disc.fit(data[:, i])
+            self.discretizers_.append(disc)
+        
+        self.fitted_ = True
+        return self
+    
+    def _fit_multivariate_pca_kmeans(self, data):
+        """Fit PCA + KMeans for multivariate discretization."""
+        from sklearn.decomposition import PCA
+        from sklearn.cluster import KMeans
+        
+        # Reduce dimensions first
+        n_components = min(3, data.shape[1])
+        self.pca_model_ = PCA(n_components=n_components, random_state=self.random_state)
+        data_pca = self.pca_model_.fit_transform(data)
+        
+        # Then use KMeans on reduced dimensions
+        self.kmeans_model_ = KMeans(
+            n_clusters=self.num_bins, 
+            random_state=self.random_state
+        )
+        self.kmeans_model_.fit(data_pca)
+        
+        self.fitted_ = True
+        return self
+    
+    def transform(self, data):
+        """
+        Apply fitted discretization to new data.
+        
+        Parameters:
+        -----------
+        data : array-like, 1D or 2D
+            Data to discretize using fitted bins
+        
+        Returns:
+        --------
+        discretized : ndarray
+            Discretized data with same shape as input (or combined shape for multivariate)
+        """
+        if not self.fitted_:
+            raise ValueError("Discretizer must be fitted before transform. Call fit() first.")
+        
+        data = np.array(data)
+        
+        # Handle multivariate case
+        if self.is_multivariate_:
+            if self.multivariate_method == 'pca_kmeans':
+                return self._transform_multivariate_pca_kmeans(data)
+            else:  # independent
+                return self._transform_multivariate_independent(data)
+        
+        # Univariate case
+        if len(data.shape) > 1:
+            data = data.flatten()
+        
+        # Clip outliers if it was done during fit
+        if self.clip_outliers and self.clip_bounds_ is not None:
+            lower, upper = self.clip_bounds_
+            data = np.clip(data, lower, upper)
+        
+        if self.strategy == 'kmeans' and self.kmeans_model_ is not None:
+            discretized = self.kmeans_model_.predict(data.reshape(-1, 1))
+            return discretized.reshape(data.shape)
+        else:
+            discretized = np.digitize(data, self.bins_) - 1
+            discretized = np.clip(discretized, 0, self.num_bins - 1)
+            return discretized.reshape(data.shape)
+    
+    def _transform_multivariate_independent(self, data):
+        """Transform multivariate data using independent discretizers."""
+        n_features = data.shape[1]
+        discretized_list = []
+        
+        for i in range(n_features):
+            disc = self.discretizers_[i]
+            disc_result = disc.transform(data[:, i])
+            discretized_list.append(disc_result)
+        
+        # Return combined result (can be used with feature combination strategies)
+        return np.column_stack(discretized_list)
+    
+    def _transform_multivariate_pca_kmeans(self, data):
+        """Transform multivariate data using PCA + KMeans."""
+        data_pca = self.pca_model_.transform(data)
+        discretized = self.kmeans_model_.predict(data_pca)
+        return discretized
+    
+    def fit_transform(self, data):
+        """Fit discretizer and transform data in one step."""
+        return self.fit(data).transform(data)
 
 
 def discretize_data(data, num_bins=10, strategy='equal_width'):
+    """
+    Convenience function for discretization. 
+    
+    WARNING: For train/test splits, use Discretizer class instead to prevent data leakage.
+    This function fits on the provided data, which causes leakage if used separately on train/test.
+    
+    For proper usage:
+        discretizer = Discretizer(num_bins, strategy)
+        train_discrete = discretizer.fit_transform(train_data)
+        test_discrete = discretizer.transform(test_data)
+    """
     if len(data.shape) > 1 and data.shape[1] > 1:
         raise ValueError("discretize_data expects a 1D array")
     

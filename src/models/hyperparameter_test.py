@@ -15,7 +15,7 @@ from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 from sklearn.model_selection import ParameterGrid
 from sklearn.decomposition import PCA
 
-from ..data.data_processor import FinancialDataLoader, discretize_data
+from ..data.data_processor import FinancialDataLoader, discretize_data, Discretizer
 from .hmm_model import HiddenMarkovModel
 
 np.random.seed(42)
@@ -142,13 +142,16 @@ def run_hyperparameter_test(
     print(f"HMM train data stats: min={np.min(hmm_train_data):.6f}, max={np.max(hmm_train_data):.6f}, mean={np.mean(hmm_train_data):.6f}, std={np.std(hmm_train_data):.6f}")
     print(f"HMM eval data stats: min={np.min(hmm_eval_data):.6f}, max={np.max(hmm_eval_data):.6f}, mean={np.mean(hmm_eval_data):.6f}, std={np.std(hmm_eval_data):.6f}")
 
-    # Discretize data with error handling
+    # Use Discretizer class to prevent data leakage (fits on train, transforms test)
     try:
         print(f"Discretizing data using {discr_strategy} strategy with {observations} bins")
-        X_train_discrete = discretize_data(
-            hmm_train_data, num_bins=observations, strategy=discr_strategy)
-        X_eval_discrete = discretize_data(
-            hmm_eval_data, num_bins=observations, strategy=discr_strategy)
+        discretizer = Discretizer(
+            num_bins=observations, 
+            strategy=discr_strategy,
+            random_state=42
+        )
+        X_train_discrete = discretizer.fit_transform(hmm_train_data)
+        X_eval_discrete = discretizer.transform(hmm_eval_data)
         
         print(f"Train discrete data: shape={X_train_discrete.shape}, unique values={np.unique(X_train_discrete)}")
         print(f"Eval discrete data: shape={X_eval_discrete.shape}, unique values={np.unique(X_eval_discrete)}")
@@ -652,13 +655,16 @@ def run_optimized_test():
         print(f"HMM train data stats: min={np.min(hmm_train_data):.6f}, max={np.max(hmm_train_data):.6f}, mean={np.mean(hmm_train_data):.6f}, std={np.std(hmm_train_data):.6f}")
         print(f"HMM eval data stats: min={np.min(hmm_eval_data):.6f}, max={np.max(hmm_eval_data):.6f}, mean={np.mean(hmm_eval_data):.6f}, std={np.std(hmm_eval_data):.6f}")
 
-        # Discretize data with error handling
+        # Use Discretizer class to prevent data leakage (fits on train, transforms test)
         try:
             print(f"Discretizing data using {params['discr_strategy']} strategy with {params['observations']} bins")
-            X_train_discrete = discretize_data(
-                hmm_train_data, num_bins=params['observations'], strategy=params['discr_strategy'])
-            X_eval_discrete = discretize_data(
-                hmm_eval_data, num_bins=params['observations'], strategy=params['discr_strategy'])
+            discretizer = Discretizer(
+                num_bins=params['observations'], 
+                strategy=params['discr_strategy'],
+                random_state=42
+            )
+            X_train_discrete = discretizer.fit_transform(hmm_train_data)
+            X_eval_discrete = discretizer.transform(hmm_eval_data)
             
             print(f"Train discrete data: shape={X_train_discrete.shape}, unique values={np.unique(X_train_discrete)}")
             print(f"Eval discrete data: shape={X_eval_discrete.shape}, unique values={np.unique(X_eval_discrete)}")

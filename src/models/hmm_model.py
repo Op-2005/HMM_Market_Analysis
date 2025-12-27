@@ -1,3 +1,10 @@
+"""
+Backward-compatible HiddenMarkovModel class.
+
+This class maintains the original API for backward compatibility.
+For new code, consider using DiscreteHMM and HMMTrainer from the refactored API
+which provide better separation of concerns and cleaner architecture.
+"""
 import torch
 import numpy as np
 import time
@@ -25,6 +32,17 @@ class HiddenMarkovModel(object):
             self.E = torch.tensor(E, dtype=torch.float64)
             self.T = torch.tensor(T, dtype=torch.float64)
             self.T0 = torch.tensor(T0, dtype=torch.float64)
+            
+            # Ensure parameters are properly normalized (probability distributions)
+            epsilon = 1e-10
+            self.T = torch.clamp(self.T, min=epsilon)
+            self.E = torch.clamp(self.E, min=epsilon)
+            self.T0 = torch.clamp(self.T0, min=epsilon)
+            
+            # Normalize to ensure rows sum to 1
+            self.T = self.T / self.T.sum(dim=1, keepdim=True)
+            self.E = self.E / self.E.sum(dim=1, keepdim=True)
+            self.T0 = self.T0 / self.T0.sum()
         except Exception as e:
             print(f"Error initializing HMM tensors: {str(e)}")
             print(f"T shape: {T.shape}, E shape: {E.shape}, T0 shape: {T0.shape}")
@@ -163,6 +181,12 @@ class HiddenMarkovModel(object):
             raise
 
     def forward_backward(self, obs_prob_seq):
+        """
+        Forward-backward algorithm with improved numerical stability using log-space.
+        
+        This implementation uses log-space computations to prevent underflow on long sequences,
+        while maintaining efficiency and accuracy.
+        """
         try:
             # Check input shape - obs_prob_seq should be (seq_len, num_states)
             if len(obs_prob_seq.shape) != 2 or obs_prob_seq.shape[1] != self.S:
@@ -170,32 +194,53 @@ class HiddenMarkovModel(object):
                     f"Expected obs_prob_seq shape (seq_len, {self.S}), got {obs_prob_seq.shape}")
             
             self.N = len(obs_prob_seq)
+            epsilon = 1e-10  # Small epsilon to prevent log(0)
             
-            # Initialize
-            self.forward = torch.zeros([self.N, self.S], dtype=torch.float64)
-            self.backward = torch.zeros([self.N, self.S], dtype=torch.float64)
+            # Clamp probabilities to avoid zeros
+            obs_prob_seq = torch.clamp(obs_prob_seq, min=epsilon, max=1.0)
             
-            # Forward pass initialization with initial state distribution
-            self.forward[0, :] = self.T0 * obs_prob_seq[0, :]
-            self.forward[0, :] = self.forward[0, :] / self.forward[0, :].sum()
+            # Convert to log-space
+            log_obs = torch.log(obs_prob_seq)
+            log_T = torch.log(torch.clamp(self.T, min=epsilon))
+            log_T0 = torch.log(torch.clamp(self.T0, min=epsilon))
             
-            # Forward pass iteration
+            # Initialize forward and backward in log-space
+            log_forward = torch.zeros([self.N, self.S], dtype=torch.float64)
+            log_backward = torch.zeros([self.N, self.S], dtype=torch.float64)
+            
+            # Forward pass initialization
+            log_forward[0, :] = log_T0 + log_obs[0, :]
+            # Normalize using logsumexp to prevent underflow
+            log_forward[0, :] = log_forward[0, :] - torch.logsumexp(log_forward[0, :], dim=0)
+            
+            # Forward pass iteration using log-space
             for t in range(1, self.N):
-                self.forward[t, :] = torch.matmul(
-                    self.forward[t-1, :], self.T) * obs_prob_seq[t, :]
-                self.forward[t, :] = self.forward[t, :] / \
-                    self.forward[t, :].sum()
-                
-            # Backward pass initialization
-            self.backward[self.N-1, :] = torch.ones(
-                self.S, dtype=torch.float64)
+                # log P(x_t | z_t) + logsumexp_z_{t-1} [log P(z_t | z_{t-1}) + log alpha_{t-1}(z_{t-1})]
+                # We compute: log(forward[t-1]) + log(T) for all transitions, then logsumexp
+                log_transitions = log_forward[t-1, :].unsqueeze(1) + log_T  # (S, S)
+                log_forward[t, :] = torch.logsumexp(log_transitions, dim=0) + log_obs[t, :]
+                # Normalize
+                log_forward[t, :] = log_forward[t, :] - torch.logsumexp(log_forward[t, :], dim=0)
             
-            # Backward pass iteration
+            # Backward pass initialization
+            log_backward[self.N-1, :] = torch.zeros(self.S, dtype=torch.float64)
+            
+            # Backward pass iteration using log-space
             for t in range(self.N-2, -1, -1):
-                self.backward[t, :] = torch.matmul(
-                    self.T, (self.backward[t+1, :] * obs_prob_seq[t+1, :]))
-                self.backward[t, :] = self.backward[t, :] / \
-                    self.backward[t, :].sum()
+                # log beta_t(z_t) = logsumexp_z_{t+1} [log P(z_{t+1} | z_t) + log P(x_{t+1} | z_{t+1}) + log beta_{t+1}(z_{t+1})]
+                log_transitions = log_T + (log_obs[t+1, :] + log_backward[t+1, :]).unsqueeze(0)  # (S, S)
+                log_backward[t, :] = torch.logsumexp(log_transitions, dim=1)
+                # Normalize for numerical stability
+                log_backward[t, :] = log_backward[t, :] - torch.logsumexp(log_backward[t, :], dim=0)
+            
+            # Convert back to probability space (these are properly normalized)
+            self.forward = torch.exp(log_forward)
+            self.backward = torch.exp(log_backward)
+            
+            # Ensure proper normalization (double-check)
+            self.forward = self.forward / (self.forward.sum(dim=1, keepdim=True) + epsilon)
+            self.backward = self.backward / (self.backward.sum(dim=1, keepdim=True) + epsilon)
+            
         except Exception as e:
             print(f"Error in forward-backward algorithm: {str(e)}")
             raise
@@ -240,6 +285,15 @@ class HiddenMarkovModel(object):
         self.gamma = torch.cat([self.gamma, s], 0)
         self.prob_state_1.append(self.gamma[:, 0].detach().numpy())
 
+        # Add epsilon flooring to prevent zero probabilities (improves numerical stability)
+        epsilon = 1e-10
+        T_new = T_new + epsilon
+        T0_new = T0_new + epsilon
+        
+        # Renormalize to ensure proper probability distributions
+        T_new = T_new / T_new.sum(dim=1, keepdim=True)
+        T0_new = T0_new / T0_new.sum()
+
         return T0_new, T_new
 
     def re_estimate_emission(self, x):
@@ -269,6 +323,10 @@ class HiddenMarkovModel(object):
             for i in range(self.S):
                 E_new[i, obs_idx] += state_probs[i]
         
+        # Add epsilon flooring to prevent zero probabilities (improves numerical stability)
+        epsilon = 1e-10
+        E_new = E_new + epsilon
+        
         # Normalize each row (each state) to sum to 1
         row_sums = E_new.sum(dim=1, keepdim=True)
         # Avoid division by zero
@@ -277,6 +335,90 @@ class HiddenMarkovModel(object):
         
         return E_new
 
+    def validate(self, raise_on_error=True):
+        """
+        Validate HMM parameters to ensure they satisfy constraints.
+        
+        Checks:
+        - Matrix shapes are correct
+        - Transition matrix rows sum to 1
+        - Emission matrix rows sum to 1
+        - Initial state distribution sums to 1
+        - All probabilities are non-negative
+        - No NaN or Inf values
+        
+        Parameters:
+        -----------
+        raise_on_error : bool
+            If True, raise ValueError on validation failure. If False, return False.
+        
+        Returns:
+        --------
+        bool
+            True if validation passes, False otherwise
+        """
+        errors = []
+        epsilon = 1e-6  # Tolerance for floating point comparison
+        
+        # Check shapes
+        if self.T.shape[0] != self.S or self.T.shape[1] != self.S:
+            errors.append(f"Transition matrix T has incorrect shape: {self.T.shape}, expected ({self.S}, {self.S})")
+        
+        if self.E.shape[0] != self.S:
+            errors.append(f"Emission matrix E has incorrect first dimension: {self.E.shape[0]}, expected {self.S}")
+        
+        if self.T0.shape[0] != self.S:
+            errors.append(f"Initial state distribution T0 has incorrect shape: {self.T0.shape}, expected ({self.S},)")
+        
+        # Check for NaN or Inf
+        if torch.isnan(self.T).any():
+            errors.append("Transition matrix T contains NaN values")
+        if torch.isinf(self.T).any():
+            errors.append("Transition matrix T contains Inf values")
+        
+        if torch.isnan(self.E).any():
+            errors.append("Emission matrix E contains NaN values")
+        if torch.isinf(self.E).any():
+            errors.append("Emission matrix E contains Inf values")
+        
+        if torch.isnan(self.T0).any():
+            errors.append("Initial state distribution T0 contains NaN values")
+        if torch.isinf(self.T0).any():
+            errors.append("Initial state distribution T0 contains Inf values")
+        
+        # Check non-negativity
+        if (self.T < 0).any():
+            errors.append("Transition matrix T contains negative values")
+        if (self.E < 0).any():
+            errors.append("Emission matrix E contains negative values")
+        if (self.T0 < 0).any():
+            errors.append("Initial state distribution T0 contains negative values")
+        
+        # Check row sums for transition matrix
+        T_row_sums = self.T.sum(dim=1)
+        if not torch.allclose(T_row_sums, torch.ones(self.S, dtype=torch.float64), atol=epsilon):
+            errors.append(f"Transition matrix T rows do not sum to 1. Sums: {T_row_sums}")
+        
+        # Check row sums for emission matrix
+        E_row_sums = self.E.sum(dim=1)
+        if not torch.allclose(E_row_sums, torch.ones(self.S, dtype=torch.float64), atol=epsilon):
+            errors.append(f"Emission matrix E rows do not sum to 1. Sums: {E_row_sums}")
+        
+        # Check initial state distribution sum
+        T0_sum = self.T0.sum()
+        if not torch.allclose(T0_sum, torch.tensor(1.0, dtype=torch.float64), atol=epsilon):
+            errors.append(f"Initial state distribution T0 does not sum to 1. Sum: {T0_sum}")
+        
+        if errors:
+            error_msg = "HMM validation failed:\n" + "\n".join(f"  - {e}" for e in errors)
+            if raise_on_error:
+                raise ValueError(error_msg)
+            else:
+                print(f"WARNING: {error_msg}")
+                return False
+        
+        return True
+    
     def check_convergence(self, new_T0, new_transition, new_emission):
         with torch.no_grad():
             delta_T0 = torch.max(torch.abs(self.T0 - new_T0)

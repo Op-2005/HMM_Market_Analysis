@@ -9,7 +9,7 @@ from tqdm import tqdm
 import argparse
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
-from ..data.data_processor import FinancialDataLoader, discretize_data, map_bins_to_values
+from ..data.data_processor import FinancialDataLoader, discretize_data, map_bins_to_values, Discretizer
 from ..models.hmm_model import HiddenMarkovModel
 
 np.random.seed(42)
@@ -333,14 +333,18 @@ def main():
         # Verify data before discretization
         print(f"HMM train data shape: {hmm_train_data.shape}, range: [{np.min(hmm_train_data)}, {np.max(hmm_train_data)}]")
 
-        # Use a try-except block to catch potential issues
+        # Use Discretizer class to prevent data leakage (fits on train, transforms test)
         try:
-            X_train_discrete = discretize_data(
-                hmm_train_data, num_bins=args.observations, strategy=args.discr_strategy)
-            X_eval_discrete = discretize_data(
-                hmm_eval_data, num_bins=args.observations, strategy=args.discr_strategy)
+            discretizer = Discretizer(
+                num_bins=args.observations, 
+                strategy=args.discr_strategy,
+                random_state=42
+            )
+            X_train_discrete = discretizer.fit_transform(hmm_train_data)
+            X_eval_discrete = discretizer.transform(hmm_eval_data)
                 
             print(f"Discretized data: train shape {X_train_discrete.shape}, unique values: {np.unique(X_train_discrete)}")
+            print(f"Discretized eval data: shape {X_eval_discrete.shape}, unique values: {np.unique(X_eval_discrete)}")
             
         except Exception as e:
             print(f"Error in discretization: {str(e)}")
