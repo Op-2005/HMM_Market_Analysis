@@ -1,4 +1,4 @@
-# HMM Market Regime Classifier 📈
+# HMM Market Regime Classifier
 
 A Hidden Markov Model implementation for identifying financial market regimes (bull, bear, and sideways markets) from time series data. This project explores how unsupervised learning can be applied to financial markets to recognize different market conditions automatically.
 
@@ -14,6 +14,9 @@ The project implements a complete pipeline from raw financial data to an interac
 
 The interactive Streamlit dashboard provides a comprehensive view of the model's performance and insights. Below is an interactive regime analyzer that starts with day 0 at 1/14/2010 as well as an analysis of state transition patterns:
 
+<img width="1206" height="216" alt="Screenshot 2025-12-28 at 9 11 11 AM" src="https://github.com/user-attachments/assets/a550cb61-0c1b-4ea7-9bbf-07707310e1a7" />
+
+<img width="1203" height="685" alt="Screenshot 2025-12-28 at 9 10 04 AM" src="https://github.com/user-attachments/assets/ba85c61d-1758-42ed-8b58-d61370f78ac0" />
 
 To explore the full dashboard yourself, see the [How to Run](#how-to-run) section below.
 
