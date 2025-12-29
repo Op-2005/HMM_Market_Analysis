@@ -1,1 +1,0 @@
-# Test suite for HMM Market Regime Classifier 

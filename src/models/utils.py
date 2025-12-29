@@ -1,31 +1,12 @@
-"""
-Utility functions for HMM models: regime mapping and initialization.
-"""
+# Utility functions for regime mapping and HMM parameter initialization.
 import numpy as np
 import torch
 from typing import Dict, Tuple, Optional
 
 
 class RegimeMapper:
-    """Maps HMM states to market regimes (bull/bear/mixed)."""
-    
     @staticmethod
     def map_by_correlation(states: np.ndarray, labels: np.ndarray) -> Dict[int, int]:
-        """
-        Map states to regimes using correlation with actual labels.
-        
-        Parameters:
-        -----------
-        states : np.ndarray
-            State sequence
-        labels : np.ndarray
-            Actual regime labels (1=bull, 0=bear)
-        
-        Returns:
-        --------
-        state_to_label : dict
-            Mapping from state index to label (1=bull, 0=bear)
-        """
         unique_states = np.unique(states)
         state_correlations = {}
         
@@ -35,8 +16,7 @@ class RegimeMapper:
             # Calculate correlation with actual labels
             if np.std(state_presence) > 0 and np.std(labels) > 0:
                 corr = np.corrcoef(state_presence, labels)[0, 1]
-                if np.isnan(corr):
-                    corr = 0.0
+                corr = 0.0 if np.isnan(corr) else corr
             else:
                 corr = 0.0
             state_correlations[state] = corr
@@ -52,23 +32,7 @@ class RegimeMapper:
     @staticmethod
     def map_by_majority(states: np.ndarray, labels: np.ndarray, 
                        threshold: float = 0.5) -> Dict[int, int]:
-        """
-        Map states to regimes using majority voting within each state.
-        
-        Parameters:
-        -----------
-        states : np.ndarray
-            State sequence
-        labels : np.ndarray
-            Actual regime labels (1=bull, 0=bear)
-        threshold : float
-            Threshold for majority voting (default 0.5)
-        
-        Returns:
-        --------
-        state_to_label : dict
-            Mapping from state index to label (1=bull, 0=bear)
-        """
+       
         unique_states = np.unique(states)
         state_to_label = {}
         
@@ -82,23 +46,6 @@ class RegimeMapper:
     @staticmethod
     def map_by_returns(states: np.ndarray, returns: np.ndarray,
                       threshold: float = 0.0) -> Dict[int, int]:
-        """
-        Map states to regimes based on return distributions.
-        
-        Parameters:
-        -----------
-        states : np.ndarray
-            State sequence
-        returns : np.ndarray
-            Return values
-        threshold : float
-            Threshold for classifying as bull (default 0.0)
-        
-        Returns:
-        --------
-        state_to_label : dict
-            Mapping from state index to label (1=bull, 0=bear)
-        """
         unique_states = np.unique(states)
         state_to_label = {}
         
@@ -108,7 +55,6 @@ class RegimeMapper:
             state_to_label[state] = 1 if mean_return >= threshold else 0
         
         return state_to_label
-
 
 def initialize_random_params(num_states: int, num_observations: int,
                             random_state: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -155,29 +101,7 @@ def initialize_random_params(num_states: int, num_observations: int,
 
 
 def initialize_structured_params(num_states: int, num_observations: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Initialize HMM parameters with structured emission matrix for market regimes.
-    
-    This creates a structured emission matrix that encodes domain knowledge about
-    different market regimes (bull, bear, mixed) based on volatility patterns.
-    
-    Parameters:
-    -----------
-    num_states : int
-        Number of hidden states
-    num_observations : int
-        Number of observations
-    
-    Returns:
-    --------
-    T : np.ndarray
-        Transition matrix (num_states x num_states)
-    E : np.ndarray
-        Emission matrix (num_states x num_observations)
-    T0 : np.ndarray
-        Initial state distribution (num_states,)
-    """
-    # Transition matrix - higher probability to stay in same state
+    # Structured emission matrix for market regimes
     T = np.ones((num_states, num_states)) / num_states
     for i in range(num_states):
         T[i, i] = 0.4  # Increased self-transition probability
@@ -229,33 +153,9 @@ def initialize_structured_params(num_states: int, num_observations: int) -> Tupl
     
     return T, E, T0
 
-
 def initialize_kmeans_params(observations: np.ndarray, num_states: int,
                             num_observations: int,
                             random_state: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Initialize HMM parameters using K-means clustering on observations.
-    
-    Parameters:
-    -----------
-    observations : np.ndarray
-        Observation sequence
-    num_states : int
-        Number of hidden states
-    num_observations : int
-        Number of observations
-    random_state : int, optional
-        Random seed
-    
-    Returns:
-    --------
-    T : np.ndarray
-        Transition matrix
-    E : np.ndarray
-        Emission matrix
-    T0 : np.ndarray
-        Initial state distribution
-    """
     from sklearn.cluster import KMeans
     
     if random_state is not None:
@@ -290,4 +190,3 @@ def initialize_kmeans_params(observations: np.ndarray, num_states: int,
     T0 = T0 / T0.sum()
     
     return T, E, T0
-

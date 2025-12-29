@@ -18,7 +18,13 @@ st.set_page_config(
 # Load data
 @st.cache_data
 def load_dashboard_data():
-    with open('dashboard_data.json', 'r') as f:
+    import os
+    from pathlib import Path
+    data_path = Path(__file__).parent / 'dashboard_data.json'
+    if not data_path.exists():
+        st.error(f"Dashboard data file not found at {data_path}. Please run prepare_data.py first.")
+        st.stop()
+    with open(data_path, 'r') as f:
         return json.load(f)
 
 # Load the preprocessed data
@@ -35,15 +41,21 @@ STATE_COLORS = {
 
 # Main app function
 def main():
-    st.title("Financial Market Regime Classification with HMM")
-    st.markdown("An interactive dashboard showcasing Hidden Markov Model analysis of market regimes")
+    st.title("📈 HMM Market Regime Classifier")
+    st.markdown("**Interactive dashboard for Hidden Markov Model analysis of financial market regimes**")
     
     # Sidebar for navigation
-    st.sidebar.title("Navigation")
+    st.sidebar.title("🗂️ Navigation")
+    st.sidebar.markdown("---")
     section = st.sidebar.radio(
-        "Go to",
-        ["Overview", "State Analysis", "Time Series", "Performance", "About"]
+        "Select Section",
+        ["Overview", "State Analysis", "Time Series", "Performance", "About"],
+        label_visibility="collapsed"
     )
+    
+    # Add info in sidebar
+    st.sidebar.markdown("---")
+    st.sidebar.info("💡 **Tip**: Use the time series section to explore regime transitions over different time periods.")
     
     # Load content based on selection
     if section == "Overview":
@@ -58,9 +70,9 @@ def main():
         display_about()
 
 def display_overview():
-    st.header("Project Overview")
-    st.write("""
-    This project uses Hidden Markov Models to classify financial market regimes (bull vs bear markets).
+    st.header("📊 Project Overview")
+    st.markdown("""
+    This project uses **Hidden Markov Models (HMM)** to classify financial market regimes (bull vs bear markets).
     The model discovers hidden states that correspond to different market conditions based on price and volatility patterns.
     The structured emission matrix approach helps better separate market regimes by encoding domain knowledge into the model initialization.
     """)
@@ -74,18 +86,20 @@ def display_overview():
     col4.metric("F1 Score", f"{metrics['f1_score']:.2%}",)
     
     # Model configuration
-    st.subheader("Model Configuration")
-    config_col1, config_col2 = st.columns(2)
+    st.subheader("⚙️ Model Configuration")
+    config_col1, config_col2, config_col3 = st.columns(3)
     
     with config_col1:
-        st.info("**Hidden States:** 5")
-        st.info("**Observations:** 20")
-        st.info("**Training Steps:** 60")
+        st.metric("Hidden States", "5")
+        st.metric("Observations", "20")
     
     with config_col2:
-        st.info("**Discretization:** Equal Frequency")
-        st.info("**Classification Threshold:** 0.4")
-        st.info("**Main Feature:** SP500 High-Low Range")
+        st.metric("Training Steps", "60")
+        st.metric("Discretization", "Equal Frequency")
+    
+    with config_col3:
+        st.metric("Threshold", "0.4")
+        st.metric("Feature", "SP500 High-Low")
     
     # Display confusion matrix
     st.subheader("Confusion Matrix")
@@ -99,7 +113,7 @@ def display_overview():
         st.pyplot(fig)
 
 def display_state_analysis():
-    st.header("State Interpretation")
+    st.header("🔍 State Analysis")
     
     # Create state interpretation table
     state_data = []
@@ -160,7 +174,7 @@ def display_state_analysis():
     st.plotly_chart(fig, use_container_width=True)
 
 def display_time_series():
-    st.header("Time Series Analysis")
+    st.header("📉 Time Series Analysis")
     
     # Create DataFrame with time series data
     features = np.array(data['features'])
@@ -352,7 +366,7 @@ def display_time_series():
     st.plotly_chart(fig, use_container_width=True)
 
 def display_performance():
-    st.header("Model Performance Analysis")
+    st.header("📈 Model Performance")
     
     # Hard-coded metrics for the improved model
     actual_metrics = {
@@ -477,7 +491,7 @@ def display_performance():
 
 
 def display_about():
-    st.header("About This Project")
+    st.header("ℹ️ About This Project")
     
     st.markdown("""
     ### Hidden Markov Model for Market Regime Classification

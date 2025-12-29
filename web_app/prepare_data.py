@@ -1,53 +1,50 @@
+# Prepares dashboard data by loading model, running inference, and generating metrics.
 import sys
-import os
 import json
 import pandas as pd
 import numpy as np
 import torch
+from pathlib import Path
 
-# Add parent directory to path for imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+base_dir = Path(__file__).parent.parent
+sys.path.insert(0, str(base_dir))
 
-from data_processor import FinancialDataLoader, discretize_data
-from hmm_model import HiddenMarkovModel
+from src.data.data_processor import FinancialDataLoader, Discretizer
+from src.models.hmm_model import HiddenMarkovModel
 
 def prepare_dashboard_data():
-    """Processes the data and model for the dashboard"""
+    # Prepares all data needed for the Streamlit dashboard: loads model, runs inference, computes metrics
     print("Loading model and data...")
     
-    # Load the trained model
-    model_path = '../optimized_hmm_classification_model.pt'
-    model = HiddenMarkovModel.load_model(model_path)
+    # Load trained model
+    model_path = base_dir / 'results' / 'optimized_hmm_classification_model.pt'
+    model = HiddenMarkovModel.load_model(str(model_path))
     
-    # Load and process financial data
-    data_path = '../financial_data.csv'
+    # Load and prepare financial data
+    data_path = base_dir / 'data' / 'financial_data.csv'
     data_loader = FinancialDataLoader(
-        file_path=data_path,
+        file_path=str(data_path),
         target_column='sp500 close',
         features=['sp500 high-low'],
         normalize=True
     )
     
-    # Add derived columns
+    # Add log returns and regime labels
     log_returns_col = data_loader.add_log_returns('sp500 close')
     label_col = data_loader.add_regime_labels(log_returns_col, threshold=0.0, window=5)
     
-    # Get feature data and discretize it
+    # Discretize feature data for HMM inference
     feature_data = data_loader.data['sp500 high-low'].values
-    discretized_data = discretize_data(
-        feature_data, 
-        num_bins=20, 
-        strategy='equal_freq'
-    )
+    discretizer = Discretizer(num_bins=20, strategy='equal_freq', random_state=42)
+    discretized_data = discretizer.fit_transform(feature_data)
     
-    # Run inference with the model
+    # Run Viterbi inference to get most likely state sequence
     states_seq, state_probs = model.viterbi_inference(torch.tensor(discretized_data, dtype=torch.int64))
     
-    # Convert to numpy for easier processing
     states_np = states_seq.numpy()
     probs_np = state_probs.numpy()
     
-    # Run model evaluation to get performance metrics
+    # Evaluate model to get performance metrics and state interpretations
     eval_metrics = model.evaluate(
         torch.tensor(discretized_data, dtype=torch.int64),
         mode='classification',
@@ -57,7 +54,7 @@ def prepare_dashboard_data():
         direct_states=True
     )
     
-    # Extract state interpretations and convert to serializable format
+    # Extract state interpretations for dashboard display
     state_interpretations = {}
     for state, info in eval_metrics['state_interpretations'].items():
         state_interpretations[int(state)] = {
@@ -67,10 +64,9 @@ def prepare_dashboard_data():
             'std': float(info['std'])
         }
     
-    # Create transition matrix visualization data
     transition_matrix = model.T.numpy()
     
-    # Save data for the Streamlit app
+    # Package all data for dashboard
     dashboard_data = {
         'states': states_np.tolist(),
         'state_probabilities': probs_np.tolist(),
@@ -91,11 +87,12 @@ def prepare_dashboard_data():
         }
     }
     
-    # Save to file
-    with open('dashboard_data.json', 'w') as f:
+    # Save to JSON file for dashboard to load
+    output_path = Path(__file__).parent / 'dashboard_data.json'
+    with open(output_path, 'w') as f:
         json.dump(dashboard_data, f)
     
-    print("Data preparation complete. Saved to dashboard_data.json")
+    print(f"Data preparation complete. Saved to {output_path}")
 
 if __name__ == "__main__":
     prepare_dashboard_data()

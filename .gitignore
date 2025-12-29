@@ -60,12 +60,12 @@ Thumbs.db
 
 # Data files (large datasets)
 *.csv
+!src/data/financial_data.csv
 *.tsv
 *.parquet
 *.feather
 data/raw/
 data/processed/
-!src/data/financial_data.csv
 
 # Results and outputs
 results/temp/
@@ -73,13 +73,10 @@ results/temp/
 outputs/
 wandb/
 
-# Model artifacts
+# Model artifacts (keep trained model)
 models/saved/
 checkpoints/
-*.pt
-*.pth
 *.onnx
-!src/results/*.pt
 
 # Documentation
 docs/_build/

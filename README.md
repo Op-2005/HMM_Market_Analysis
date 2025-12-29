@@ -1,18 +1,78 @@
 # HMM Market Regime Classifier 📈
 
-A sophisticated Hidden Markov Model implementation for financial market regime classification using PyTorch. This project identifies distinct market regimes (bull, bear, and sideways markets) from financial time series data with high accuracy and interpretability.
+A Hidden Markov Model implementation for identifying financial market regimes (bull, bear, and sideways markets) from time series data. This project explores how unsupervised learning can be applied to financial markets to recognize different market conditions automatically.
 
-## 🌟 Features
+## Project Overview
 
-- **Custom HMM Implementation**: PyTorch-based Hidden Markov Model with optimized Viterbi decoding and Baum-Welch EM training
-- **Financial Data Processing**: Specialized data loaders with multiple discretization strategies (equal frequency, equal width, K-means)
-- **Market Regime Classification**: Automatically identifies bull, bear, and mixed market conditions
-- **Interactive Dashboard**: Streamlit web application for real-time model visualization and analysis
-- **Advanced Model Architecture**: Structured emission matrices for improved regime separation
-- **Comprehensive Evaluation**: Detailed performance metrics, confusion matrices, and state interpretations
-- **Production Ready**: Full test suite, type hints, and production deployment capabilities
+This project came from wanting to explore quantitative machine learning through a beginner-friendly lens. Instead of jumping straight into complex neural networks, I wanted to understand how classical probabilistic models like Hidden Markov Models (HMMs) can capture underlying patterns in financial markets.
 
-## 🚀 Quick Start
+The goal is straightforward: can we teach a model to recognize when the market is in a bullish uptrend, a bearish downturn, or somewhere in between? By treating market regimes as hidden states that generate observable price movements, HMMs provide a natural framework for this kind of classification task.
+
+The project implements a complete pipeline from raw financial data to an interactive dashboard, demonstrating how machine learning concepts translate into practical applications. It's structured to be educational while still producing meaningful results that could inform trading strategies or risk management decisions.
+
+## Demo
+
+The interactive Streamlit dashboard provides a comprehensive view of the model's performance and insights. Below is an interactive regime analyzer that starts with day 0 at 1/14/2010 as well as an analysis of state transition patterns:
+
+
+To explore the full dashboard yourself, see the [How to Run](#how-to-run) section below.
+
+## System Architecture
+
+### Core Pipeline
+
+The project follows a standard machine learning pipeline adapted for time series and probabilistic modeling:
+
+**Data Processing** → **Feature Engineering** → **Discretization** → **HMM Training** → **Inference** → **Evaluation**
+
+The workflow starts with raw S&P 500 price data. After computing technical indicators and log returns, the continuous data is discretized into categorical observations that the HMM can process. The Baum-Welch EM algorithm learns the transition probabilities between hidden states and emission probabilities for observations. Once trained, the Viterbi algorithm finds the most likely sequence of market regimes, which are then mapped to bull/bear classifications.
+
+### Model Components
+
+**Hidden Markov Model (HMM)**
+- **Hidden States**: Represent different market regimes (typically 5 states capturing bull, bear, and intermediate conditions)
+- **Observations**: Discretized price movements and volatility indicators
+- **Transition Matrix**: Models how likely the market is to switch from one regime to another
+- **Emission Matrix**: Defines what price patterns we expect to see in each regime
+
+**Training Process**
+- Baum-Welch Expectation-Maximization algorithm iteratively refines model parameters
+- Forward-Backward algorithm computes state probabilities during training
+- Structured initialization helps the model learn distinct regimes (e.g., low volatility bull markets vs high volatility bear markets)
+
+**Inference**
+- Viterbi algorithm finds the most likely sequence of hidden states
+- State-to-regime mapping using correlation analysis or majority voting
+- Classification threshold tuning to balance precision and recall
+
+**Evaluation**
+- Standard classification metrics (accuracy, precision, recall, F1)
+- Confusion matrix analysis
+- State interpretation based on actual market labels
+- Transition pattern analysis to understand regime dynamics
+
+
+## Data Source & Preprocessing
+
+**Dataset**: S&P 500 historical data from Kaggle ([easily searchable as "S&P 500 stock data"](https://www.kaggle.com/datasets))
+
+The dataset contains daily OHLCV (Open, High, Low, Close, Volume) data for the S&P 500 index over several years. This is a standard, publicly available dataset perfect for exploring financial time series analysis. The starting date for this dataset is around 2010. 
+
+**Preprocessing Steps**:
+
+- **Log Returns Calculation**: Convert raw prices to log returns to make the data stationary and comparable across different price levels
+- **Feature Engineering**: Compute technical indicators including:
+  - High-Low spread (volatility proxy)
+  - Moving averages
+  - Additional features via the `feature_engineering` module
+- **Normalization**: Standardize features to zero mean and unit variance for stable discretization
+- **Regime Labeling**: Create ground truth labels by smoothing log returns over a 5-day window and thresholding at zero (positive = bull, negative = bear)
+- **Discretization**: Convert continuous features to categorical observations using equal-frequency binning (20 bins) to preserve distribution characteristics
+- **Train/Test Split**: 80/20 split preserving temporal order (no shuffling, as this is time series data)
+
+The preprocessing pipeline is designed to be transparent and reproducible, with all transformations clearly documented in the codebase.
+
+## How to Run
 
 ### Prerequisites
 
@@ -23,7 +83,7 @@ A sophisticated Hidden Markov Model implementation for financial market regime c
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/hmm-market-regime-classifier.git
+git clone <repository-url>
 cd DSU_HMM
 
 # Create and activate virtual environment
@@ -32,295 +92,79 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 # Install dependencies
 pip install -r requirements.txt
-
-# Install the package in development mode
-pip install -e .
 ```
 
-### Basic Usage
+Key dependencies include PyTorch for tensor operations, pandas/numpy for data manipulation, Streamlit for the dashboard, and scikit-learn for evaluation metrics and discretization utilities.
 
-#### 1. Train a Model
+### Running the Project
+
+**1. Train the Model**
 
 ```bash
-# Quick training with default parameters
-python -m src.training.train --mode classification --states 5 --observations 20
-
-# Or use the convenient training script
-./scripts/run_training.sh --best
+python -m src.models.hyperparameter_test
 ```
 
-#### 2. Launch the Dashboard
+This trains the HMM with optimized hyperparameters (5 states, 20 observation bins, equal-frequency discretization). The trained model is saved to `results/optimized_hmm_classification_model.pt`.
+
+**2. Prepare Dashboard Data**
 
 ```bash
-# Prepare dashboard data
-python -m src.web_app.prepare_data
-
-# Launch interactive dashboard
-streamlit run src/web_app/app.py
+python web_app/prepare_data.py
 ```
 
-#### 3. Visualize Results
+This loads the trained model, runs inference on the full dataset, and generates the JSON file needed by the dashboard.
 
-```python
-from src.visualization.visualize_model import create_all_visualizations
+**3. Launch the Dashboard**
 
-# Generate comprehensive visualizations
-create_all_visualizations(
-    model_path="src/results/optimized_hmm_classification_model.pt",
-    data_path="src/data/financial_data.csv"
-)
+```bash
+streamlit run web_app/app.py
 ```
 
-## 📊 Model Performance
+The dashboard will open in your browser at `http://localhost:8501`, displaying interactive visualizations of model performance, state analysis, and time series with regime classifications.
 
-The current best model achieves:
+**4. Generate Analysis Reports (Optional)**
 
-- **Accuracy**: 66.12%
-- **Precision**: 70.83%
-- **Recall**: 71.33%
-- **F1 Score**: 71.08%
+```bash
+python -m src.models.regime_analysis
+```
 
-### State Interpretations
+This creates additional visualizations and analysis reports in the `results/visualizations/` directory, including transition matrix heatmaps and regime persistence statistics.
 
-| State | Type | Bull Ratio | Mean Return | Regime Description |
-|-------|------|------------|-------------|-------------------|
-| 0 | Bull Market | 0.76 | 3.55 | Strong upward trends |
-| 1 | Mixed Market | 0.49 | 4.52 | Neutral/sideways movement |
-| 2 | Mixed Market | 0.63 | 6.03 | Mild bullish bias |
-| 3 | Mixed Market | 0.43 | 7.43 | Mild bearish bias |
-| 4 | Bear Market | 0.14 | 12.44 | Strong downward trends |
-
-## 🏗️ Project Structure
+## Project Structure
 
 ```
 DSU_HMM/
-├── src/
-│   ├── data/                    # Data processing and loading
-│   │   ├── data_processor.py    # Financial data loader and preprocessing
-│   │   └── financial_data.csv   # Sample financial dataset
-│   ├── models/                  # Core HMM implementation
-│   │   ├── hmm_model.py        # Main HMM class with Viterbi & Baum-Welch
-│   │   └── hyperparameter_test.py # Model optimization and testing
-│   ├── training/                # Training scripts and utilities
-│   │   └── train.py            # Main training script with CLI interface
-│   ├── visualization/           # Model visualization and analysis
-│   │   ├── visualize_model.py  # Core visualization functions
-│   │   ├── view_model.py       # Model analysis utilities
-│   │   └── model_visualizations/ # Generated plots and charts
-│   ├── web_app/                # Interactive dashboard
-│   │   ├── app.py              # Streamlit dashboard application
-│   │   └── prepare_data.py     # Dashboard data preparation
-│   └── results/                # Model outputs and reports
-│       ├── final_model_results.md
-│       ├── optimized_hmm_classification_model.pt
-│       └── structured_emission_model_results.json
-├── tests/                      # Test suite
-│   ├── unit/                   # Unit tests
-│   └── integration/            # Integration tests
-├── scripts/                    # Utility scripts
-│   └── run_training.sh         # Training automation script
-├── docs/                       # Documentation
-├── requirements.txt            # Python dependencies
-├── pyproject.toml             # Project configuration
-└── setup.py                   # Package setup
+├── src/                        # Core library code
+│   ├── models/                 # HMM model implementations
+│   │   ├── hmm_model.py       # Main HMM class with Viterbi and Baum-Welch
+│   │   ├── base_hmm.py        # Abstract base class
+│   │   ├── discrete_hmm.py    # Discrete HMM implementation
+│   │   ├── trainer.py         # Training logic
+│   │   ├── utils.py           # Utility functions and regime mapping
+│   │   ├── hyperparameter_test.py # Model training script
+│   │   └── regime_analysis.py # Regime transition analysis script
+│   └── data/                   # Data processing
+│       ├── data_processor.py  # Data loader and preprocessing
+│       └── feature_engineering.py # Technical indicators
+├── web_app/                    # Streamlit dashboard
+│   ├── app.py                 # Dashboard application
+│   └── prepare_data.py        # Dashboard data preparation
+├── results/                    # Model outputs
+│   ├── MODEL_METRICS.md
+│   ├── optimized_hmm_classification_model.pt
+│   ├── structured_emission_model_results.json
+│   └── visualizations/        # Generated visualizations
+├── data/                       # Raw data files
+│   └── financial_data.csv
+├── requirements.txt
+├── pyproject.toml
+└── README.md
 ```
 
-## 🔧 Advanced Usage
+The structure separates core model code (`src/`), application code (`web_app/`), outputs (`results/`), and raw data (`data/`), making it easy to navigate and understand the project organization.
 
-### Custom Training Configuration
+## Future Improvements
 
-```bash
-python -m src.training.train \
-    --mode classification \
-    --states 6 \
-    --observations 25 \
-    --steps 100 \
-    --discr_strategy kmeans \
-    --direct_states \
-    --feature "sp500 volume" \
-    --target "sp500 close" \
-    --class_threshold 0.3
-```
+## Future Improvements
 
-### Training Script Options
-
-```bash
-# Quick test with reduced parameters
-./scripts/run_training.sh --quick
-
-# Best known configuration
-./scripts/run_training.sh --best
-
-# Custom configuration
-./scripts/run_training.sh --states 6 --observations 30 --steps 80
-```
-
-### Using the Python API
-
-```python
-from src.models.hmm_model import HiddenMarkovModel
-from src.data.data_processor import FinancialDataLoader, discretize_data
-
-# Load and prepare data
-loader = FinancialDataLoader(
-    file_path="src/data/financial_data.csv",
-    target_column="sp500 close",
-    features=["sp500 high-low"]
-)
-
-# Discretize features
-X_discrete = discretize_data(loader.X, num_bins=20, strategy='equal_freq')
-
-# Initialize and train HMM
-hmm = HiddenMarkovModel(T, E, T0, device='cpu')
-T0, T, E, converged = hmm.Baum_Welch_EM(X_discrete)
-
-# Perform inference
-states, probabilities = hmm.viterbi_inference(X_discrete)
-```
-
-## 📈 Dashboard Features
-
-The interactive Streamlit dashboard provides:
-
-- **Real-time Model Performance**: Live accuracy, precision, recall metrics
-- **State Analysis**: Detailed regime interpretations and transition matrices
-- **Time Series Visualization**: Interactive plots with regime highlighting
-- **Confusion Matrix**: Model classification performance breakdown
-- **Parameter Exploration**: Dynamic model configuration and results
-
-Access the dashboard at `http://localhost:8501` after running:
-
-```bash
-streamlit run src/web_app/app.py
-```
-
-## 🧪 Testing
-
-Run the comprehensive test suite:
-
-```bash
-# Run all tests
-pytest tests/
-
-# Run with coverage
-pytest tests/ --cov=src --cov-report=html
-
-# Run specific test modules
-pytest tests/unit/test_hmm_model.py
-```
-
-## 📚 API Reference
-
-### Core Classes
-
-#### `HiddenMarkovModel`
-Main HMM implementation with PyTorch backend.
-
-```python
-model = HiddenMarkovModel(
-    T,           # Transition matrix (S x S)
-    E,           # Emission matrix (S x O)
-    T0,          # Initial state distribution (S,)
-    device='cpu', # Computation device
-    epsilon=0.001, # Convergence threshold
-    maxStep=20    # Maximum EM iterations
-)
-```
-
-#### `FinancialDataLoader`
-Specialized data loader for financial time series.
-
-```python
-loader = FinancialDataLoader(
-    file_path,     # Path to CSV file
-    target_column, # Target variable name
-    features,      # List of feature column names
-    normalize=True # Whether to normalize features
-)
-```
-
-### Key Methods
-
-- **`viterbi_inference(observations)`**: Find most likely state sequence
-- **`Baum_Welch_EM(observations)`**: Train model parameters using EM algorithm
-- **`evaluate(observations, mode='classification')`**: Evaluate model performance
-- **`save_model(filepath)`** / **`load_model(filepath)`**: Model persistence
-
-## 🔬 Research & Applications
-
-### Academic Applications
-- Market regime identification and analysis
-- Financial time series modeling
-- Behavioral finance research
-- Risk management and portfolio optimization
-
-### Industry Applications
-- Algorithmic trading strategy development
-- Risk-adjusted portfolio allocation
-- Market timing and regime-based investment
-- Financial advisory and robo-advisor integration
-
-## 🛠️ Development
-
-### Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-### Code Quality
-
-The project uses:
-- **Black**: Code formatting
-- **MyPy**: Static type checking
-- **Flake8**: Linting
-- **Pytest**: Testing framework
-
-Run quality checks:
-
-```bash
-# Format code
-black src/ tests/
-
-# Type checking
-mypy src/
-
-# Linting
-flake8 src/
-
-# All checks
-pre-commit run --all-files
-```
-
-## 🚀 Future Enhancements
-
-See [`NEXT_STEPS.md`](NEXT_STEPS.md) for detailed roadmap including:
-
-- **Advanced Model Architectures**: Hierarchical HMMs, time-varying parameters
-- **Feature Engineering**: Technical indicators, alternative data sources
-- **Real-time Integration**: Live data feeds and streaming inference
-- **Production Deployment**: Cloud deployment, API development
-- **Research Extensions**: Deep learning integration, reinforcement learning
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 📞 Contact & Support
-
-- **Issues**: [GitHub Issues](https://github.com/yourusername/hmm-market-regime-classifier/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/hmm-market-regime-classifier/discussions)
-- **Email**: your.email@example.com
-
-## 🙏 Acknowledgments
-
-- Built with PyTorch, Streamlit, and the Python scientific computing stack
-- Inspired by classical Hidden Markov Model literature and modern financial ML research
-- Special thanks to the open-source community for excellent tools and libraries
-
----
-
-**⭐ Star this repository if you find it useful!** 
+There's definitely room to expand this project in some interesting directions. I'd like to experiment with more sophisticated HMM variants like hierarchical models that could capture nested market regimes, or time-varying transition probabilities that adapt as market conditions evolve. On the data side, incorporating alternative sources like sentiment analysis or options flow data could add another dimension beyond just price movements. The feature engineering could go deeper, as multi-timeframe analysis or cross-asset correlations might reveal patterns the current model misses. Eventually it'd be ideal to build this into something more practical, like a simple API endpoint for real-time regime classification or even a basic portfolio optimization tool that adjusts allocation based on detected regimes. The foundation is solid enough that these extensions feel achievable without starting from scratch.
