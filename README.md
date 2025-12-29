@@ -168,6 +168,4 @@ The structure separates core model code (`src/`), application code (`web_app/`),
 
 ## Future Improvements
 
-## Future Improvements
-
 There's definitely room to expand this project in some interesting directions. I'd like to experiment with more sophisticated HMM variants like hierarchical models that could capture nested market regimes, or time-varying transition probabilities that adapt as market conditions evolve. On the data side, incorporating alternative sources like sentiment analysis or options flow data could add another dimension beyond just price movements. The feature engineering could go deeper, as multi-timeframe analysis or cross-asset correlations might reveal patterns the current model misses. Eventually it'd be ideal to build this into something more practical, like a simple API endpoint for real-time regime classification or even a basic portfolio optimization tool that adjusts allocation based on detected regimes. The foundation is solid enough that these extensions feel achievable without starting from scratch.
