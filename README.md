@@ -12,7 +12,7 @@ The project implements a complete pipeline from raw financial data to an interac
 
 ## Demo
 
-The interactive Streamlit dashboard provides a comprehensive view of the model's performance and insights. Below is an interactive regime analyzer that starts with day 0 at 1/14/2010 as well as an analysis of state transition patterns:
+The interactive Streamlit dashboard provides a comprehensive view of the model's performance and insights. Below is an interactive regime analyzer that starts with day 0 at 1/14/2010 as well as an analysis of different detected regimes across these 13 years:
 
 <img width="1206" height="216" alt="Screenshot 2025-12-28 at 9 11 11 AM" src="https://github.com/user-attachments/assets/a550cb61-0c1b-4ea7-9bbf-07707310e1a7" />
 
