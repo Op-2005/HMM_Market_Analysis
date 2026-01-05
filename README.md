@@ -6,9 +6,9 @@ A Hidden Markov Model implementation for identifying financial market regimes (b
 
 This project came from wanting to explore quantitative machine learning through a beginner-friendly lens. Instead of jumping straight into complex neural networks, I wanted to understand how classical probabilistic models like Hidden Markov Models (HMMs) can capture underlying patterns in financial markets.
 
-The goal is straightforward: can we teach a model to recognize when the market is in a bullish uptrend, a bearish downturn, or somewhere in between? By treating market regimes as hidden states that generate observable price movements, HMMs provide a natural framework for this kind of classification task.
+The goal is if can we teach a model to recognize when the market is in a bullish uptrend, a bearish downturn, or somewhere in between? We do this by treating market regimes as hidden states that generate observable price movements, and HMMs provide a framework for this kind of classification task.
 
-The project implements a complete pipeline from raw financial data to an interactive dashboard, demonstrating how machine learning concepts translate into practical applications. It's structured to be educational while still producing meaningful results that could inform trading strategies or risk management decisions.
+The project implements a complete pipeline from raw financial data to an interactive dashboard, demonstrating how machine learning concepts translate into practical applications.
 
 ## Demo
 
